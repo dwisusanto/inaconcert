@@ -16,9 +16,9 @@ package = "Commerce"
 php = 5.0
 
 files[] = tests/commerce_tickets.test
-; Information added by drupal.org packaging script on 2013-03-17
+; Information added by drupal.org packaging script on 2013-09-30
 version = "7.x-1.x-dev"
 core = "7.x"
 project = "commerce_tickets"
-datestamp = "1363524466"
+datestamp = "1380560920"
 

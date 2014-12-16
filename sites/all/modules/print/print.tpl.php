@@ -20,6 +20,19 @@
     <?php print $print['css']; ?>
   </head>
   <body>
-    <?php print $print['content']; ?>
+    <?php if (!empty($print['message'])) {
+      print '<div class="print-message">'. $print['message'] .'</div><p />';
+    } ?>
+    <div class="print-logo"><?php print $print['logo']; ?></div>
+    <div class="print-site_name"><?php print $print['site_name']; ?></div>
+    <p />
+    <div class="print-breadcrumb"><?php print $print['breadcrumb']; ?></div>
+    <hr class="print-hr" />
+    <div class="print-content"><?php print $print['content']; ?></div>
+    <div class="print-footer"><?php print $print['footer_message']; ?></div>
+    <hr class="print-hr" />
+    <div class="print-source_url"><?php print $print['source_url']; ?></div>
+    <div class="print-links"><?php print $print['pfp_links']; ?></div>
+    <?php print $print['footer_scripts']; ?>
   </body>
 </html>

@@ -107,7 +107,7 @@ function commerce_tickets_field_widget_form(&$form, &$form_state, $field, $insta
       $types = db_query("SELECT * FROM {commerce_product} WHERE type='commerce_ticket'");
 
       foreach ($types as $type) {
-        $ticket_types[$type->product_id] = $type->sku . ' -- ' . $type->title;
+        $ticket_types[$type->product_id] = $type->title;
       }
 
       $element = array(
@@ -209,81 +209,90 @@ function commerce_tickets_purchase_form($form, &$form_state, $object, $display, 
   foreach ($display as $ticket_id => $title) {
 
     $ticket = commerce_product_load($ticket_id);
-    if ($ticket->status == 1) {
-      $price = commerce_product_calculate_sell_price($ticket);
+    $price = commerce_product_calculate_sell_price($ticket);
 
-      $form['ticket_type_' . $ticket_id] = array(
-          '#title' => t(''),
-          '#type' => 'select',
-          '#options' => array(0 => 'Select', 1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5),
-          '#default_value' => !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0,
-          '#prefix' => '<div class="passengers_select">',
-          '#suffix' => '<span class="ticket_type">' . $title . '</span><span class="ticket_price">' . commerce_currency_format($price['amount'], $price['currency_code']) . ' ea</span></div>',
-          '#ajax' => array(
-              'callback' => 'commerce_tickets_update_total_callback',
-              'wrapper' => 'ticket_reserve_form',
-              'method' => 'replaceWith',
-              'effect' => 'fade',
-              'progress' => array(
-                  'type' => 'throbber',
-                  'message' => ''
-              )
-          ),
+    $form['ticket_type_' . $ticket_id] = array(
+        '#title' => t(''),
+        '#type' => 'select',
+        '#options' => array(0 => 'Select', 1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5, 6 => 6, 7 => 7, 8 => 8, 9 => 9, 10 => 10, 11 => 11, 12 => 12, 13 => 13, 14 => 14, 15 => 15),
+        '#default_value' => !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0,
+        '#prefix' => '<div class="passengers_select">',
+        '#suffix' => '<span class="ticket_type">' . $title . '</span><span class="ticket_price">' . commerce_currency_format($price['amount'], $price['currency_code']) . ' ea</span></div>',
+        '#ajax' => array(
+            'callback' => 'commerce_tickets_update_total_callback',
+            'wrapper' => 'ticket_reserve_form',
+            'method' => 'replaceWith',
+            'effect' => 'fade',
+            'progress' => array(
+                'type' => 'throbber',
+                'message' => ''
+            )
+        ),
+    );
+
+    $num_passengers = !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0;
+
+    if ($settings['collect_name']) {
+
+      $form['ticket_type_' . $ticket_id . '_fieldset'] = array(
+          '#title' => t(""),
+          '#prefix' => '<div class="passengers-div">',
+          '#suffix' => '</div>',
+          '#type' => 'fieldset',
+          '#description' => t(''),
       );
 
-      $num_passengers = !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0;
+      $num = array(
+          1 => 'First',
+          2 => 'Second',
+          3 => 'Third',
+          4 => 'Forth',
+          5 => 'Fifth',
+          6 => 'Sixth',
+          7 => 'Seventh',
+          8 => 'Eighth',
+          9 => 'Ninth',
+          10 => 'Tenth',
+          11 => 'Eleventh',
+          12 => 'Twelfth',
+          13 => 'Thirteenth',
+          14 => 'Fourteenth',
+          15 => 'Fifteenth'
+      );
 
-      if ($settings['collect_name']) {
+      for ($i = 1; $i <= $num_passengers; $i++) {
 
-        $form['ticket_type_' . $ticket_id . '_fieldset'] = array(
-            '#title' => t(""),
-            '#prefix' => '<div class="passengers-div">',
-            '#suffix' => '</div>',
+        $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"] = array(
+            '#title' => t($num[$i] . ' ' . $title),
             '#type' => 'fieldset',
-            '#description' => t(''),
+            '#states' => array(
+                'invisible' => array(
+                    ':input[name="ticket_type_' . $ticket_id . '"][value=0]' => array('selected' => 'selected'),
+                ),
+            )
         );
 
-        $num = array(
-            1 => 'First',
-            2 => 'Second',
-            3 => 'Third',
-            4 => 'Forth',
-            5 => 'Fifth'
+        $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'fname' . $i] = array(
+            '#type' => 'textfield',
+            '#title' => t('First Name'),
+            '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i] : '',
+            '#size' => 20,
+            '#maxlength' => 128,
+            '#required' => TRUE,
         );
 
-        for ($i = 1; $i <= $num_passengers; $i++) {
-
-          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"] = array(
-              '#title' => t($num[$i] . ' ' . $title),
-              '#type' => 'fieldset',
-              '#states' => array(
-                  'invisible' => array(
-                      ':input[name="ticket_type_' . $ticket_id . '"][value=0]' => array('selected' => 'selected'),
-                  ),
-              )
-          );
-
-          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'fname' . $i] = array(
-              '#type' => 'textfield',
-              '#title' => t('First Name'),
-              '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i] : '',
-              '#size' => 20,
-              '#maxlength' => 128,
-              '#required' => TRUE,
-          );
-
-          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'lname' . $i] = array(
-              '#type' => 'textfield',
-              '#title' => t('Last Name'),
-              '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i] : '',
-              '#size' => 20,
-              '#maxlength' => 128,
-              '#required' => TRUE,
-          );
-        }
+        $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'lname' . $i] = array(
+            '#type' => 'textfield',
+            '#title' => t('Last Name'),
+            '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i] : '',
+            '#size' => 20,
+            '#maxlength' => 128,
+            '#required' => TRUE,
+        );
       }
-      $total_price += $num_passengers * $price['amount'];
     }
+
+    $total_price += $num_passengers * $price['amount'];
   }
 
   $form['total'] = array(
