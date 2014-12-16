@@ -1,0 +1,447 @@
+<?php
+
+/**
+ * @file
+ * Tests for Commerce Tickets module
+ */
+class CommerceTicketsTests extends DrupalWebTestCase {
+
+  /**
+   * Base setup for all test cases
+   */
+  function setUp() {
+    parent::setUp(array('commerce_tickets'));
+  }
+
+  /**
+   * Creates a user with a specific set of permissions and logs him in
+   */
+  function loginUserWithPermissions($permissions){
+    $user = $this->drupalCreateUser($permissions);
+    $this->drupalLogin($user);
+    return $user;
+  }
+
+  /**
+   * Add a new content type with a commerce tickets field
+   */
+  function assertAddCommerceTicketsProduct(){
+
+    $this->drupalGet("admin/commerce/products/add/commerce-ticket");
+
+    $this->assertResponse(200);
+    $this->assertFieldByName("sku");
+    $this->assertFieldByName("title");
+    $this->assertFieldByName("commerce_price[und][0][amount]");
+
+    $data = array(
+        'sku' => 'regular_ticket',
+        'title' => 'Regular Ticket',
+        'commerce_price[und][0][amount]' => 10
+    );
+
+    $this->drupalPost("admin/commerce/products/add/commerce-ticket", $data, t('Save and add another'));
+
+    $data = array(
+        'sku' => 'premium_ticket',
+        'title' => 'Premium Ticket',
+        'commerce_price[und][0][amount]' => 30
+    );
+
+    $this->drupalPost("admin/commerce/products/add/commerce-ticket", $data, t('Save product'));
+
+    $this->assertText(t("premium_ticket"), "Commerce Tickets premium_ticket product created", "Commerce Tickets");
+    $this->assertText(t("regular_ticket "), "Commerce Tickets regular_ticket product created", "Commerce Tickets");
+
+  }
+
+  /**
+   * Add a new content type with a commerce tickets field
+   */
+  function assertAddContentTypeWithCommerceTicketsField(){
+    $settings = array(
+        'name' => "Ticket",
+        'type' => "ticket"
+    );
+
+    $this->drupalCreateContentType($settings);
+
+    $data = array(
+        'fields[_add_new_field][label]' => "Select Tickets",
+        'fields[_add_new_field][field_name]' => "select_tickets",
+        'fields[_add_new_field][type]' => "commerce_tickets_field",
+        'fields[_add_new_field][widget_type]' => "commerce_tickets_field_widget"
+    );
+
+    $this->drupalPost("admin/structure/types/manage/ticket/fields", $data, t('Save'));
+
+    $this->assertFieldByName("field[settings][no_of_tickets]");
+    $this->assertFieldByName("field[settings][collect_name]");
+    $this->assertFieldByName("field[settings][buttun_text]");
+
+    $data = array(
+        'field[settings][no_of_tickets]' => "2",
+        'field[settings][collect_name]' => 1,
+        'field[settings][buttun_text]' => "Buy Now",
+    );
+
+    $this->drupalPost("admin/structure/types/manage/ticket/fields/field_select_tickets/field-settings", $data, t('Save field settings'));
+
+    $this->drupalGet("admin/structure/types/manage/ticket/fields/field_select_tickets");
+
+    $this->assertFieldByName("field_select_tickets[und][0][ticket1]");
+    $this->assertFieldByName("field_select_tickets[und][0][ticket2]");
+
+    $data = array(
+        'field_select_tickets[und][0][ticket1]' => 1,
+        'field_select_tickets[und][0][ticket2]' => 2
+    );
+
+    $this->drupalPost("admin/structure/types/manage/ticket/fields/field_select_tickets", $data, t('Save settings'));
+
+    $this->assertText(t("Saved Select Tickets configuration"), "Commerce Tickets field configured", "Commerce Tickets");
+  }
+
+  /**
+   * Add a new content with a commerce tickets
+   */
+  function assertAddContentWithCommerceTickets(){
+
+    $this->drupalGet("node/add/ticket");
+
+    $this->assertResponse(200);
+    $this->assertFieldByName("field_select_tickets[und][0][ticket1]");
+    $this->assertFieldByName("field_select_tickets[und][0][ticket2]");
+
+    $data = array(
+        'title' => t("Dubai Bus"),
+        'body[und][0][value]' => t('Choose the number and types of tickets you want to buy'),
+        'field_select_tickets[und][0][ticket1]' => 1,
+        'field_select_tickets[und][0][ticket2]' => 2,
+    );
+
+    $this->drupalPost("node/add/ticket", $data, t('Save'));
+
+    $this->assertText(t("Ticket Dubai Bus has been created"), "Commerce Tickets node created", "Commerce Tickets");
+
+    $this->assertFieldByName("ticket_type_1");
+    $this->assertFieldByName("ticket_type_2");
+
+    $this->assertText(t("Total Cost$0.00"), "Commerce Tickets field is appearing correctly on the node", "Commerce Tickets");
+
+    return $this->getUrl();
+  }
+
+  /**
+   * Choose number of tickets and make sure the correct fields appear and the Total Cost is updated correctly
+   */
+  function assertChooseNumberOfTicketsFieldsAppearAndCostUpdates(){
+
+    $edit = array(
+        'ticket_type_1' => 2,
+    );
+
+    $this->drupalPostAJAX(NULL, $edit, 'ticket_type_1');
+
+    $this->assertText(t("First Regular Ticket"), "Commerce Tickets field First Regular Ticket appeared correctly on the node", "Commerce Tickets");
+    $this->assertFieldByName("ticket_type_1fname1");
+    $this->assertFieldByName("ticket_type_1lname1");
+
+    $this->assertText(t("Second Regular Ticket"), "Commerce Tickets field Second Regular Ticket appeared correctly on the node", "Commerce Tickets");
+    $this->assertFieldByName("ticket_type_1fname2");
+    $this->assertFieldByName("ticket_type_1lname2");
+
+    $this->assertText(t("Total Cost$20.00"), "Commerce Tickets field Total cost is updating correctly on the node", "Commerce Tickets");
+
+    $this->verbose('Page content after selecting 2 regular tickets:<hr />' . $this->drupalGetContent());
+
+    $edit = array(
+        'ticket_type_1' => 2,
+        'ticket_type_1fname1' => '',
+        'ticket_type_1lname1' => '',
+        'ticket_type_1fname2' => '',
+        'ticket_type_1lname2' => '',
+        'ticket_type_2' => 2,
+    );
+
+    $this->drupalPostAJAX(NULL, $edit, 'ticket_type_2');
+
+    $this->assertText(t("First Premium Ticket"), "Commerce Tickets field First Premium Ticket appeared correctly on the node", "Commerce Tickets");
+    $this->assertFieldByName("ticket_type_2fname1");
+    $this->assertFieldByName("ticket_type_2lname1");
+
+    $this->assertText(t("Second Premium Ticket"), "Commerce Tickets field Second Premium Ticket appeared correctly on the node", "Commerce Tickets");
+    $this->assertFieldByName("ticket_type_2fname2");
+    $this->assertFieldByName("ticket_type_2lname2");
+
+    $this->assertText(t("Total Cost$80.00"), "Commerce Tickets field Total cost is updating correctly on the node", "Commerce Tickets");
+
+    $this->verbose('Page content after selecting 2 premium tickets:<hr />' . $this->drupalGetContent());
+
+  }
+
+  /**
+   * User can buy one ticket type and complete checkout
+   */
+  function assertUserCanBuyOneTicketTypeAndCompleteCheckout(){
+
+    $edit = array(
+        'ticket_type_1' => 2,
+    );
+
+    $this->drupalPostAJAX(NULL, $edit, 'ticket_type_1');
+
+    $data = array(
+        'ticket_type_1' => 2,
+        'ticket_type_1fname1' => 'John',
+        'ticket_type_1lname1' => 'Smith',
+        'ticket_type_1fname2' => 'Shery',
+        'ticket_type_1lname2' => 'Smith',
+        'ticket_type_2' => 0,
+    );
+
+    $this->drupalPost(NULL, $data, t('Buy Now'));
+
+    $this->assertText("Regular Ticket", t("Commerce Tickets regular products appear correctly on checkout"), "Commerce Tickets");
+
+    $this->assertNoText("Premium Ticket", t("Commerce Tickets premium products don't appear on checkout"), "Commerce Tickets");
+
+    $data = array(
+        'account[login][mail]' => "user@domain.com",
+        'customer_profile_billing[commerce_customer_address][und][0][name_line]' => "XXX",
+        'customer_profile_billing[commerce_customer_address][und][0][thoroughfare]' => "XXX",
+        'customer_profile_billing[commerce_customer_address][und][0][locality]' => "XXX",
+    );
+
+    $this->drupalPost($this->getUrl(), $data, t('Continue to next step'));
+
+    $this->assertText(t("Review order"), "Review Order page loaded correctly", "Commerce Tickets");
+
+    $this->drupalPost($this->getUrl(), array(), t('Continue to next step'));
+
+    $this->assertText(t("Checkout complete"), "Checkout completed successfully", "Commerce Tickets");
+  }
+
+  /**
+   * User can buy several ticket types and complete checkout
+   */
+  function assertUserCanBuySeveralTicketTypesAndCompleteCheckout(){
+
+    $edit = array(
+        'ticket_type_1' => 2,
+    );
+
+    $this->drupalPostAJAX(NULL, $edit, 'ticket_type_1');
+
+    $edit = array(
+        'ticket_type_1' => 2,
+        'ticket_type_1fname1' => '',
+        'ticket_type_1lname1' => '',
+        'ticket_type_1fname2' => '',
+        'ticket_type_1lname2' => '',
+        'ticket_type_2' => 2,
+    );
+
+    $this->drupalPostAJAX(NULL, $edit, 'ticket_type_2');
+
+    $data = array(
+        'ticket_type_1' => 2,
+        'ticket_type_1fname1' => 'John',
+        'ticket_type_1lname1' => 'Smith',
+        'ticket_type_1fname2' => 'Shery',
+        'ticket_type_1lname2' => 'Smith',
+        'ticket_type_2' => 2,
+        'ticket_type_2fname1' => 'Mark',
+        'ticket_type_2lname1' => 'Joseph',
+        'ticket_type_2fname2' => 'Ellen',
+        'ticket_type_2lname2' => 'Joseph',
+    );
+
+    $this->drupalPost(NULL, $data, t('Buy Now'));
+
+    $this->assertText("Regular Ticket", t("Commerce Tickets regular products appear correctly on checkout"), "Commerce Tickets");
+
+    $this->assertText("Premium Ticket", t("Commerce Tickets premium products appear correctly on checkout"), "Commerce Tickets");
+
+    $data = array(
+        'account[login][mail]' => "user@domain.com",
+        'customer_profile_billing[commerce_customer_address][und][0][name_line]' => "XXX",
+        'customer_profile_billing[commerce_customer_address][und][0][thoroughfare]' => "XXX",
+        'customer_profile_billing[commerce_customer_address][und][0][locality]' => "XXX",
+    );
+
+    $this->drupalPost($this->getUrl(), $data, t('Continue to next step'));
+
+    $this->assertText(t("Review order"), "Review Order page loaded correctly", "Commerce Tickets");
+
+    $this->drupalPost($this->getUrl(), array(), t('Continue to next step'));
+
+    $this->assertText(t("Checkout complete"), "Checkout completed successfully", "Commerce Tickets");
+  }
+
+}
+
+/**
+ * User can create an content type with a commerce tickets field
+ */
+class UserCreateContentTypeWithCommerceTicketsField extends CommerceTicketsTests {
+
+  /**
+   * Used by the Simpletest module to display info about the test
+   */
+  public static function getInfo() {
+    return array(
+        'name' => 'User can create an content type with a commerce tickets field',
+        'description' => 'Test the creation of a content type with a commerce tickets field',
+        'group' => 'Commerce Tickets',
+    );
+  }
+
+  /**
+   * Test the creation of a content type with Commerce Contributions field
+   */
+  function testUserLoginAndCreateContentTypeWithCommerceTicketsField(){
+
+    $permissions = array(
+      'administer commerce_product entities'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddCommerceTicketsProduct();
+
+    $this->drupalLogout();
+
+    $permissions = array(
+      'administer content types'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddContentTypeWithCommerceTicketsField();
+
+  }
+}
+
+/**
+ * User can create content with a commerce tickets
+ */
+class UserCreateContentWithCommerceTickets extends CommerceTicketsTests {
+
+  /**
+   * Used by the Simpletest module to display info about the test
+   */
+  public static function getInfo() {
+    return array(
+        'name' => 'User can create content with a commerce tickets',
+        'description' => 'Test the creation of content with commerce tickets',
+        'group' => 'Commerce Tickets',
+    );
+  }
+
+  /**
+   * Test the creation of a content type with Commerce Contributions field
+   */
+  function testUserLoginAndCreateContentWithCommerceTickets() {
+
+    $permissions = array(
+        'administer commerce_product entities'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddCommerceTicketsProduct();
+
+    $this->drupalLogout();
+
+    $permissions = array(
+        'administer content types'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddContentTypeWithCommerceTicketsField();
+
+    $this->drupalLogout();
+
+    $permissions = array(
+        'create ticket content'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddContentWithCommerceTickets();
+  }
+
+}
+
+/**
+ * User can purchase tickets
+ */
+class UserPurchaseTickets extends CommerceTicketsTests {
+
+  /**
+   * Used by the Simpletest module to display info about the test
+   */
+  public static function getInfo() {
+    return array(
+        'name' => 'User can purchase tickets',
+        'description' => 'Test the purchase of tickets',
+        'group' => 'Commerce Tickets',
+    );
+  }
+
+  /**
+   * Test the creation of a content type with Commerce Contributions field
+   */
+  function testUserPurchaseTickets() {
+
+    $permissions = array(
+        'administer commerce_product entities'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddCommerceTicketsProduct();
+
+    $this->drupalLogout();
+
+    $permissions = array(
+        'administer content types'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    parent::assertAddContentTypeWithCommerceTicketsField();
+
+    $this->drupalLogout();
+
+    $permissions = array(
+        'create ticket content'
+    );
+
+    parent::loginUserWithPermissions($permissions);
+
+    $nodeUrl = parent::assertAddContentWithCommerceTickets();
+
+    $this->drupalLogout();
+
+    user_role_change_permissions(DRUPAL_ANONYMOUS_RID, array(
+      'access checkout' => TRUE,
+    ));
+
+    $this->drupalGet($nodeUrl);
+
+    parent::assertChooseNumberOfTicketsFieldsAppearAndCostUpdates();
+
+    $this->drupalGet($nodeUrl);
+
+    parent::assertUserCanBuyOneTicketTypeAndCompleteCheckout();
+
+    $this->drupalGet($nodeUrl);
+
+    parent::assertUserCanBuySeveralTicketTypesAndCompleteCheckout();
+
+  }
+
+}

@@ -1,0 +1,357 @@
+<?php
+
+/**
+ * @file commerce_tickets.module
+ * */
+
+/**
+ * Implements hook_init().
+ */
+function commerce_tickets_init() {
+  drupal_add_css(drupal_get_path('module', 'commerce_tickets') . '/commerce_tickets.css');
+}
+
+/**
+ * Implements hook_field_info().
+ */
+function commerce_tickets_field_info() {
+  return array(
+      'commerce_tickets_field' => array(
+          'label' => t('Commerce Tickets Field'),
+          'description' => t('A field that implements multiple tickets the user can purchase'),
+          'default_widget' => 'commerce_tickets_field_widget',
+          'default_formatter' => 'commerce_tickets_field_formatter',
+      ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ */
+function commerce_tickets_field_formatter_info() {
+  return array(
+      'commerce_tickets_field_formatter' => array(
+          'label' => t('Commerce Tickets Purchase Form'),
+          'field types' => array('commerce_tickets_field'),
+      ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function commerce_tickets_field_widget_info() {
+  return array(
+      'commerce_tickets_field_widget' => array(
+          'label' => t('Tickets Select Widget'),
+          'field types' => array('commerce_tickets_field'),
+      ),
+  );
+}
+
+/**
+ * Implements hook_field_settings_form().
+ */
+function commerce_tickets_field_settings_form($field, $instance, $has_data) {
+
+  $settings = $field['settings'];
+
+  $form['no_of_tickets'] = array(
+      '#type' => 'textfield',
+      '#title' => t('No of Tickets'),
+      '#default_value' => array_key_exists('no_of_tickets', $settings) ? $settings['no_of_tickets'] : 3,
+      '#required' => TRUE,
+      '#element_validate' => array('element_validate_integer_positive'),
+      '#description' => t('The number of Tickets that will appear for the user to select from'),
+  );
+
+  $form['collect_name'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Collect Customer Name'),
+      '#default_value' => array_key_exists('collect_name', $settings) ? $settings['collect_name'] : TRUE,
+  );
+
+  $form['buttun_text'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Buy Button Text'),
+      '#default_value' => array_key_exists('buttun_text', $settings) ? $settings['buttun_text'] : t('Buy Now'),
+      '#size' => 30,
+      '#maxlength' => 50,
+      '#required' => TRUE,
+  );
+
+  return $form;
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function commerce_tickets_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta) {
+
+  $settings = $field['settings'];
+
+  $saved_options = array();
+
+  if (array_key_exists($delta, $items)) {
+    $saved_options = is_array($items[$delta]['ticket_ids']) ? $items[$delta]['ticket_ids'] : unserialize($items[$delta]['ticket_ids']);
+  }
+
+  switch ($instance['widget']['type']) {
+
+    case 'commerce_tickets_field_widget':
+
+      $no_of_tickets = array_key_exists('no_of_tickets', $settings) ? $settings['no_of_tickets'] : 2;
+
+      $ticket_types = array(0 => 'Select');
+
+      $types = db_query("SELECT * FROM {commerce_product} WHERE type='commerce_ticket'");
+
+      foreach ($types as $type) {
+        $ticket_types[$type->product_id] = $type->sku . ' -- ' . $type->title;
+      }
+
+      $element = array(
+          '#type' => 'fieldset',
+          '#title' => t('Commerce Tickets'),
+          '#element_validate' => array('_commerce_tickets_field_options_validate'),
+          '#langcode' => $langcode,
+      );
+
+      for ($i = 1; $i <= $no_of_tickets; $i++) {
+
+        $element['ticket' . $i] = array(
+            '#type' => 'select',
+            '#title' => t('Ticket ' . $i),
+            '#options' => $ticket_types,
+            '#description' => t('Set this to a Commerce Ticket you previously created (You can add Tickets from <a href="' . base_path() . 'admin/commerce/products/add/commerce-ticket">here</a>)'),
+            '#default_value' => array_key_exists($i - 1, $saved_options) ? $saved_options[$i - 1] : 0,
+        );
+      }
+
+      break;
+  }
+
+  return $element;
+}
+
+/**
+ * Validates commerce_tickets_field_widget_form().
+ *
+ * @see commerce_tickets_field_widget_form()
+ */
+function _commerce_tickets_field_options_validate($element, &$form_state) {
+
+  $ticket_ids = array();
+
+  $field_name = substr($element['ticket1']['#name'], 0, strpos($element['ticket1']['#name'], '['));
+
+  foreach ($form_state['values'][$field_name][$element['#langcode']][0] as $ticket_id) {
+    $ticket_ids[] = $ticket_id;
+  }
+
+  form_set_value($element, array('ticket_ids' => serialize($ticket_ids)), $form_state);
+}
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function commerce_tickets_field_is_empty($item, $field) {
+  return empty($item['ticket_ids']);
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function commerce_tickets_field_formatter_view($object_type, $object, $field, $instance, $langcode, $items, $display) {
+
+  $element = array();
+
+  $settings = $field['settings'];
+
+  $button_text = array_key_exists('buttun_text', $settings) ? $settings['buttun_text'] : t('Buy Now');
+
+  foreach ($items as $delta => $item) {
+
+    $types = unserialize($item['ticket_ids']);
+
+    $display = array();
+
+    foreach ($types as $type) {
+      $ticket = commerce_product_load($type);
+      $display[$ticket->product_id] = $ticket->title;
+    }
+
+    $element[$delta] = array(
+        '#markup' => drupal_render(drupal_get_form('commerce_tickets_purchase_form', $object, $display, $button_text, $settings)),
+    );
+  }
+
+  return $element;
+}
+
+/**
+ * Implements the buy tickets form and allows the user to select no. of passengers and enter their details
+ */
+function commerce_tickets_purchase_form($form, &$form_state, $object, $display, $button_text, $settings) {
+
+  $form['#prefix'] = '<div id="ticket_reserve_form">';
+  $form['#suffix'] = '</div>';
+
+  $form['#tickets'] = $display;
+  $form['#tickets_settings'] = $settings;
+  $form['#tickets_nid'] = $object->nid;
+
+  $ticket = array();
+
+  $total_price = 0;
+  $currency = commerce_default_currency();
+
+  foreach ($display as $ticket_id => $title) {
+
+    $ticket = commerce_product_load($ticket_id);
+    if ($ticket->status == 1) {
+      $price = commerce_product_calculate_sell_price($ticket);
+
+      $form['ticket_type_' . $ticket_id] = array(
+          '#title' => t(''),
+          '#type' => 'select',
+          '#options' => array(0 => 'Select', 1 => 1, 2 => 2, 3 => 3, 4 => 4, 5 => 5),
+          '#default_value' => !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0,
+          '#prefix' => '<div class="passengers_select">',
+          '#suffix' => '<span class="ticket_type">' . $title . '</span><span class="ticket_price">' . commerce_currency_format($price['amount'], $price['currency_code']) . ' ea</span></div>',
+          '#ajax' => array(
+              'callback' => 'commerce_tickets_update_total_callback',
+              'wrapper' => 'ticket_reserve_form',
+              'method' => 'replaceWith',
+              'effect' => 'fade',
+              'progress' => array(
+                  'type' => 'throbber',
+                  'message' => ''
+              )
+          ),
+      );
+
+      $num_passengers = !empty($form_state['values']['ticket_type_' . $ticket_id]) ? $form_state['values']['ticket_type_' . $ticket_id] : 0;
+
+      if ($settings['collect_name']) {
+
+        $form['ticket_type_' . $ticket_id . '_fieldset'] = array(
+            '#title' => t(""),
+            '#prefix' => '<div class="passengers-div">',
+            '#suffix' => '</div>',
+            '#type' => 'fieldset',
+            '#description' => t(''),
+        );
+
+        $num = array(
+            1 => 'First',
+            2 => 'Second',
+            3 => 'Third',
+            4 => 'Forth',
+            5 => 'Fifth'
+        );
+
+        for ($i = 1; $i <= $num_passengers; $i++) {
+
+          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"] = array(
+              '#title' => t($num[$i] . ' ' . $title),
+              '#type' => 'fieldset',
+              '#states' => array(
+                  'invisible' => array(
+                      ':input[name="ticket_type_' . $ticket_id . '"][value=0]' => array('selected' => 'selected'),
+                  ),
+              )
+          );
+
+          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'fname' . $i] = array(
+              '#type' => 'textfield',
+              '#title' => t('First Name'),
+              '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i] : '',
+              '#size' => 20,
+              '#maxlength' => 128,
+              '#required' => TRUE,
+          );
+
+          $form['ticket_type_' . $ticket_id . '_fieldset']['ticket_type_' . $ticket_id . "$i"]['ticket_type_' . $ticket_id . 'lname' . $i] = array(
+              '#type' => 'textfield',
+              '#title' => t('Last Name'),
+              '#default_value' => isset($form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i]) ? $form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i] : '',
+              '#size' => 20,
+              '#maxlength' => 128,
+              '#required' => TRUE,
+          );
+        }
+      }
+      $total_price += $num_passengers * $price['amount'];
+    }
+  }
+
+  $form['total'] = array(
+      '#prefix' => '<div id="total_cost">',
+      '#suffix' => '<span id="total_price_label">Total Cost</span><span id="total_price">' . commerce_currency_format($total_price, $currency) . '</span></div>',
+  );
+
+  $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => $button_text
+  );
+
+  return $form;
+}
+
+/**
+ * Callback for commerce_tickets_purchase_form()
+ *
+ * @see commerce_tickets_purchase_form()
+ */
+function commerce_tickets_update_total_callback($form, $form_state) {
+  return $form;
+}
+
+/**
+ * Submit handler for commerce_tickets_purchase_form()
+ *
+ * @see commerce_tickets_purchase_form()
+ */
+function commerce_tickets_purchase_form_submit($form, &$form_state) {
+
+  global $user;
+
+  $order = ($user->uid) ? commerce_order_new($user->uid, 'checkout_checkout') : commerce_cart_order_new();
+
+  commerce_order_save($order);
+
+  $ticket_number = variable_get('node_' . $form['#tickets_nid'] . '_ticket_number', '0');
+
+  foreach ($form['#tickets'] as $ticket_id => $title) {
+
+    if (isset($form_state['values']['ticket_type_' . $ticket_id]) && $form_state['values']['ticket_type_' . $ticket_id] != 0) {
+
+      $ticket = commerce_product_load($ticket_id);
+
+      $line_item = commerce_product_line_item_new($ticket, $form_state['values']['ticket_type_' . $ticket_id], $order->order_id);
+
+      commerce_line_item_save($line_item);
+
+      $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+      $order_wrapper->commerce_line_items[] = $line_item;
+
+      for ($i = 1; $i <= $form_state['values']['ticket_type_' . $ticket_id]; $i++) {
+        $order->data['ticket_type_' . $ticket_id . '_passenger_' . $i . 'ticket_number'] = (++$ticket_number);
+
+        if ($form['#tickets_settings']['collect_name']) {
+          $order->data['ticket_type_' . $ticket_id . '_passenger_' . $i . '_fname'] = $form_state['values']['ticket_type_' . $ticket_id . 'fname' . $i];
+          $order->data['ticket_type_' . $ticket_id . '_passenger_' . $i . '_lname'] = $form_state['values']['ticket_type_' . $ticket_id . 'lname' . $i];
+        }
+      }
+    }
+  }
+
+  commerce_order_save($order);
+
+  variable_set('node_' . $form['#tickets_nid'] . '_ticket_number', $ticket_number);
+
+  drupal_goto('checkout/' . $order->order_id);
+}
+

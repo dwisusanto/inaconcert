@@ -1,0 +1,45 @@
+<?php
+
+/**
+ * @file commerce_tickets.install
+ *
+ * Contains install and update functions for Commerce Tickets
+ */
+
+/**
+* Implements hook_install().
+*/
+function commerce_tickets_install() {
+  drupal_static_reset();
+  commerce_product_configure_product_types();
+
+  $product_type = commerce_product_ui_product_type_new();
+
+  $product_type['type'] = 'commerce_ticket';
+  $product_type['name'] = t('Commerce Ticket');
+  $product_type['description'] = t('A commerce ticket product type.');
+  $product_type['is_new'] = TRUE;
+
+  commerce_product_ui_product_type_save($product_type, TRUE);
+}
+
+/**
+* Implements hook_uninstall().
+*/
+function commerce_tickets_uninstall(){
+  if ($type = commerce_product_type_load('commerce_ticket')) {
+    commerce_product_ui_product_type_delete('commerce_ticket');
+  }
+}
+
+/**
+* Implements hook_field_schema().
+*/
+function commerce_tickets_field_schema($field) {
+  $columns = array(
+      'ticket_ids' => array('type' => 'blob', 'not null' => TRUE),
+  );
+  return array(
+      'columns' => $columns,
+  );
+}

@@ -1,0 +1,4 @@
+name = Ticket Agent
+description = Better UI for agent user roles
+core = 7.x
+package = Ticket

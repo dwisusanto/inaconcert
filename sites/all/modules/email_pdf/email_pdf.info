@@ -1,0 +1,4 @@
+name = Email PDF
+description = email pdf file
+core = 7.x
+package = PDF

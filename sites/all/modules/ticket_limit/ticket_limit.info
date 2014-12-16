@@ -1,0 +1,3 @@
+name = Ticket Limit
+description = Limit maximum ticket user agent can buy
+core = 7.x

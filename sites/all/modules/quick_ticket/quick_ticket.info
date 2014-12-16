@@ -1,0 +1,4 @@
+name = Quick Ticket
+description = Buy Ticket in quick way
+core = 7.x
+package = PDF

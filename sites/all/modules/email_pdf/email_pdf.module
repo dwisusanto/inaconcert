@@ -1,0 +1,309 @@
+<?php
+function email_pdf_menu() {
+  $items['email_pdf_test'] = array(
+		'title' => 'Email PDF Test',
+		'description' => 'Email PDF Test',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_pdf_form'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_CALLBACK,
+	);
+	$items['email_pdf_test_invoice'] = array(
+		'title' => 'Email PDF Test',
+		'description' => 'Email PDF Test',
+		'page callback' => 'email_pdf_invoice',
+		'access arguments' => array('administer site configuration'),
+		'type' => MENU_CALLBACK,
+	);
+	  
+  $items['admin/commerce/orders/%commerce_order/voucher'] = array(
+    'title' => 'Voucher',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('email_pdf_voucher', 3),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -6,
+		'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+  
+  $items['admin/commerce/orders/%commerce_order/voucher/pdf'] = array(
+    'title' => 'Voucher',
+    'page callback' => 'email_pdf_voucher_pdf',
+    'page arguments' => array(3),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -6,
+		'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+  
+	return $items;
+}
+
+function email_pdf_voucher ($form, &$form_state, $commerce_order) {
+	$form = array();
+	$form['order_id'] = array(
+		'#type' => 'hidden',
+		'#title' => t('Email'),
+		'#value' => $commerce_order->order_id,
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Send Voucher'),
+		'#submit' => array('email_pdf_voucher_submit'),
+	);
+	return $form;
+}
+
+function email_pdf_form () {
+	$form = array();
+	$form['to'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Email'),
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Submit'),
+		'#submit' => array('email_pdf_submit'),
+	);
+	return $form;
+}
+
+function email_pdf_submit($form, &$form_state) {
+	$to = $form_state['values']['to'];
+	$from = 'Inaconcerts.com <tickets@inaconcerts.com>';
+	module_load_include('inc', 'print_pdf', 'print_pdf.pages');  // require print_pdf.pages.inc  
+	// set up email  
+	$subject = "Your PDF is attached";
+	$body = '<p>Your PDF is attached</p>';
+	$path = 'admin/commerce/product-keys/29/pdf';
+	$pdfoutput = print_pdf_generate_path($path);
+	if (!is_dir('public://ticket')) {
+		//  Creates a folder and changes its permissions
+		mkdir("public://ticket", 0777);
+	}
+  $filename = 'sites/default/files/ticket/' . 'sample.pdf';
+  $fp = fopen($filename, "w+");
+  fwrite($fp, $pdfoutput);
+	//  Writes the pdf output to a file
+  fclose($fp);
+	$attachments = $filename;
+	$language = language_default();
+	$params = array(
+		'context' => array(
+			'subject' => $subject,
+			'body' => $body,
+		),
+		'cc' => NULL,
+    'bcc' => NULL,
+    'plaintext' => NULL,
+		'attachments' => $attachments,
+	);
+	$key = 'voucher email';
+	// send email
+	drupal_mail('mimemail', $key, $to, $language, $params, $from);
+	// delete file
+	unlink($filename);
+	drupal_goto('email_pdf_test');
+}
+function email_pdf_invoice() {
+	module_load_include('inc', 'print_pdf', 'print_pdf.pages');  // require print_pdf.pages.inc	$path = 'node/2';	print print_pdf_generate_path($path);
+}
+
+function email_pdf_voucher_submit($form, &$form_state) {
+	$order_id = $form_state['values']['order_id'];
+	$keys = commerce_product_key_load_by_order_id($order_id);
+	$order = commerce_order_load($order_id);
+	$line = commerce_line_item_load($order->commerce_line_items['und'][0]['line_item_id']);
+	module_load_include('inc', 'print_pdf', 'print_pdf.pages');  // require print_pdf.pages.inc  
+	$to = $order->mail;
+	$from = 'Inaconcerts.com <tickets@inaconcerts.com>';
+	$query = new EntityFieldQuery();
+
+	$query->entityCondition('entity_type', 'node')
+	  ->entityCondition('bundle', 'concert')
+	  ->fieldCondition('field_ticket', 'ticket_ids', $line->commerce_product['und'][0]['product_id'], 'CONTAINS');
+
+	$result = $query->execute();
+
+	$event = array();
+	if (isset($result['node'])) {
+		foreach ($result['node'] as $node) {
+			$concert = node_load($node->nid);
+		}
+	}
+	
+	// set up email  
+	$subject = "Voucher " . $concert->title;
+	$body = "<p>Dear Customer, </p>
+					<p>Terlampir Voucher " . $concert->title .":<br>
+Silahkan anda print voucher anda yang tertera pada attachment (format pdf).<br>
+------------------------------------------------------------------------------------------------------------------------------------------------------</p>
+<p>Terima kasih Anda telah memilih inaconcerts.com (indonesia Concerts) sebagai mitra e-tiket Anda. Semoga Anda puas dengan pelayanan yang kami berikan.</p>
+<p>Kind Regards,</p>";
+		// create file
+	$path = 'admin/commerce/orders/' . $order_id . '/voucher/pdf';
+	$pdfoutput = print_pdf_generate_path($path);
+	$filename = 'sites/default/files/ticket/' . 'ticket-' . $order_id . '.pdf';
+	$fp = fopen($filename, "w+");
+	fwrite($fp, $pdfoutput);
+	//  Writes the pdf output to a file
+	fclose($fp);
+
+	$language = language_default();
+	$params = array(
+		'context' => array(
+			'subject' => $subject,
+			'body' => $body,
+		),
+		'cc' => NULL,
+    'bcc' => NULL,
+    'plaintext' => NULL,
+		'attachments' => $filename,
+	);
+	$key = 'voucher email';
+	// send email
+	$return = drupal_mail('mimemail', $key, $to, $language, $params, $from);
+	watchdog('debug', 'email_pdf <pre>'. print_r($return, TRUE) .'</pre>');
+	// delete file
+	unlink($filename);
+	drupal_set_message('Voucher sent');
+	drupal_goto('admin/commerce/orders/' . $order_id . '/voucher');
+}
+
+function email_pdf_voucher_submit2($form, &$form_state) {
+	$order_id = $form_state['values']['order_id'];
+	$keys = commerce_product_key_load_by_order_id($order_id);
+	$order = commerce_order_load($order_id);
+	$line = commerce_line_item_load($order->commerce_line_items['und'][0]['line_item_id']);
+	module_load_include('inc', 'print_pdf', 'print_pdf.pages');  // require print_pdf.pages.inc  
+	$to = $order->mail;
+	$from = 'Inaconcerts.com <tickets@inaconcerts.com>';
+	$query = new EntityFieldQuery();
+
+	$query->entityCondition('entity_type', 'node')
+	  ->entityCondition('bundle', 'concert')
+	  ->fieldCondition('field_ticket', 'ticket_ids', $line->commerce_product['und'][0]['product_id'], 'CONTAINS');
+
+	$result = $query->execute();
+
+	$event = array();
+	if (isset($result['node'])) {
+		foreach ($result['node'] as $node) {
+			$concert = node_load($node->nid);
+		}
+	}
+	
+	// set up email  
+	$subject = "Your Voucher for " . $concert->title . " from inaconcerts.com";
+	$body = '<p>Your Voucher is attached</p>';
+	
+	$product_keys = commerce_product_key_load_multiple(array(), array('order_id' => $order_id));
+	foreach ($product_keys as $product_key) {
+		// create file
+		$path = 'admin/commerce/product-keys/' . $product_key->product_key_id . '/pdf';
+		$pdfoutput = print_pdf_generate_path($path);
+	  $filename = 'sites/default/files/ticket/' . 'ticket-' . $product_key->code . '.pdf';
+	  $fp = fopen($filename, "w+");
+	  fwrite($fp, $pdfoutput);
+		//  Writes the pdf output to a file
+	  fclose($fp);
+		$attachments[] = $filename;
+	}
+	$filename = '';
+	// build attachment
+	foreach ($attachments as $file) {
+		$filename .= $file . "\n";
+	}
+
+	$language = language_default();
+	$params = array(
+		'context' => array(
+			'subject' => $subject,
+			'body' => $body,
+		),
+		'cc' => NULL,
+    'bcc' => NULL,
+    'plaintext' => NULL,
+		'attachments' => $filename,
+	);
+	$key = 'voucher email';
+	// send email
+	$return = drupal_mail('mimemail', $key, $to, $language, $params, $from);
+	watchdog('debug', 'email_pdf <pre>'. print_r($return, TRUE) .'</pre>');
+	// delete file
+	foreach ($attachments as $file) {
+		//unlink($file);
+	}
+	drupal_goto('admin/commerce/orders/' . $order_id . '/voucher');
+}
+
+function email_pdf_theme() {
+  return array(
+    'email_pdf' => array(
+      'variables' => array('barcode' => NULL, 'profile' => NULL, 'event' => NULL, 'order' => NULL, 'product' => NULL),
+      'template' => 'email-pdf',
+    ),
+  );
+}
+
+function email_pdf_voucher_pdf($commerce_order) {
+  // Add the breadcrumb for the form's location.
+  //print_r($product_key);
+
+	$order = commerce_order_load($commerce_order->order_id);
+	$order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  foreach ($order_wrapper->commerce_line_items as $line_item_wrapper) {
+    //get the line item produck id and quantity
+    $pro = $line_item_wrapper->commerce_product->value();
+    $quantity = $line_item_wrapper->quantity->value();
+		$product['product_id'] = $pro->product_id;
+		$product['title'] = $pro->title;
+		$product['sku'] = $pro->sku;
+		$product['quantity'] = (int) $quantity;
+		$products[] = $product;
+	}
+
+	$profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
+
+	$query = new EntityFieldQuery();
+
+	$query->entityCondition('entity_type', 'node')
+	  ->entityCondition('bundle', 'concert')
+	  ->fieldCondition('field_ticket', 'ticket_ids', $product['product_id'], 'CONTAINS');
+
+	$result = $query->execute();
+
+	$event = array();
+	if (isset($result['node'])) {
+		foreach ($result['node'] as $node) {
+			$concert = node_load($node->nid);
+		}
+		$filename = $concert->field_promotor_logo['und'][0]['uri'];
+		$image_uri = file_create_url($filename);
+		$event = array(
+			'title' => $concert->title,
+			'vanue' => $concert->field_vanue['und'][0]['safe_value'],
+			'date' => $concert->field_date['und'][0]['safe_value'],
+			'promoted_by' => $image_uri,
+		);
+	}
+  $encoding = variable_get('barcode_encoding', 'CODE128');
+  $barcode = theme('barcode_image', array(
+    'barcode_value' => check_plain($order->order_number), 
+    'encoding' => $encoding,
+    'height' => 40,
+    'scale' => 2,
+    'bgcolor' => '#FFFFFF',
+    'barcolor' => '#000000',
+    'image_format' => 'jpg',
+    ));
+	return theme('email_pdf', array(
+		'barcode' => $barcode, 
+		'order' => $order, 
+		'product' => $products, 
+		'profile' => $profile, 
+		'event' => $event
+	));
+}

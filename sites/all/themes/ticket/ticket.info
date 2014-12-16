@@ -1,0 +1,50 @@
+
+name = Ticket
+description = A flexible, recolorable theme with many regions.
+package = Core
+version = VERSION
+core = 7.x
+
+stylesheets[all][] = css/reset.css
+stylesheets[all][] = css/style.css
+stylesheets[all][] = css/flexslider.css
+stylesheets[all][] = css/responsive.css 		
+
+scripts[] = js/jquery.flexslider.js
+scripts[] = js/jquery.carouFredSel-5.6.1.js
+scripts[] = js/jquery.prettyPhoto.js
+scripts[] = js/jflickrfeed.min.js
+scripts[] = js/kendo.web.min.js
+scripts[] = js/cufon-yui.js
+scripts[] = js/Oswald_5F400.font.js
+scripts[] = js/custom.js
+
+regions[header] = Header
+regions[help] = Help
+regions[page_top] = Page top
+regions[page_bottom] = Page bottom
+regions[highlighted] = Highlighted
+
+regions[featured] = Featured
+regions[content] = Content
+regions[sidebar_first] = Sidebar first
+regions[sidebar_second] = Sidebar second
+
+regions[triptych_first] = Triptych first
+regions[triptych_middle] = Triptych middle
+regions[triptych_last] = Triptych last
+
+regions[footer_firstcolumn] = Footer first column
+regions[footer_secondcolumn] = Footer second column
+regions[footer_thirdcolumn] = Footer third column
+regions[footer_fourthcolumn] = Footer fourth column
+regions[footer] = Footer
+
+settings[shortcut_module_link] = 0
+
+
+; Information added by drupal.org packaging script on 2013-04-03
+version = "7.22"
+project = "drupal"
+datestamp = "1365027012"
+

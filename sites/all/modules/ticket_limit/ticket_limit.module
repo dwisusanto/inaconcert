@@ -1,0 +1,226 @@
+<?php
+function ticket_limit_menu() {
+  $items['admin/commerce/config/ticket_limit'] = array(
+    'title' => 'Ticket Limit Config',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticket_limit_config'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -6,
+		'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+  
+	$items['admin/commerce/config/ticket_limit/edit'] = array(
+    'title' => 'Ticket Limit Config',
+    'page callback' => 'ticket_limit_edit',
+    'page arguments' => array(5, 6),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -6,
+		'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+  
+	return $items;
+}
+
+function ticket_limit_config_search_form() {
+  $concert = ticket_limit_get_concert();
+	$form = array();
+	$form['concert'] = array(
+		'#type' => 'select',
+		'#title' => t('Concert'),
+		'#options' => $concert,
+    '#default_value' => (isset($_SESSION['ticket_limit_concert']) ? $_SESSION['ticket_limit_concert'] : 0),
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Submit'),
+		'#submit' => array('ticket_limit_config_search_form_submit'),
+	);
+	return $form;
+}
+
+function ticket_limit_config_search_form_submit($form, &$form_state) {
+  $_SESSION['ticket_limit_concert'] = $form_state['values']['concert'];
+}
+
+function ticket_limit_config($form, $form_state) {
+  $form['filter'] = ticket_limit_config_search_form();
+  $form['#submit'][] = 'ticket_limit_config_search_form_submit';
+  $form['admin'] = ticket_limit_table();
+
+  return $form;
+}
+
+function ticket_limit_table() {
+  // Build the sortable table header.
+  $header = array(
+    'name' => array('data' => t('Name')),
+  );
+  $options = array();
+  $tickets = ticket_limit_get_ticket();
+  if ($tickets) {
+    $users = ticket_limit_get_user();
+    
+		$total['name'] = t('Total');
+    foreach ($users as $user) {
+      $options[$user->uid]['name'] = $user->name;
+      $tic = $tickets;
+      foreach ($tickets as $key => $ticket) {
+        $header[$key] = array('data' => t($ticket['title']));
+				$limit = (isset($tic[$key]['limit'][$user->uid]) ? $tic[$key]['limit'][$user->uid] : 0);
+        $options[$user->uid][$key] = $limit;
+        $total[$key] = $limit + @$total[$key];
+      }
+      $operations['edit'] = array(
+        'title' => t('edit'),
+        'href' => 'admin/commerce/config/ticket_limit/edit/' . $user->uid,
+        'query' => drupal_get_destination(),
+      );
+      $header['options'] = array('data' => t('Options'));
+      $options[$user->uid]['operations'] = array(
+        'data' => array(
+          '#theme' => 'links__node_operations',
+          '#links' => $operations,
+          '#attributes' => array('class' => array('links', 'inline')),
+        ),
+      );
+    }
+		$total['operations'] = '';
+		$options['total'] = $total;
+		//ksort($options);
+  }
+	
+  $form['ticket_limit'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $options,
+    '#empty' => t('No content available.'),
+  );
+  
+  return $form;
+}
+
+function ticket_limit_get_user() {
+  // get user list with agent roles
+  $query = db_select('users', 'u');
+  $query->fields('u', array('uid', 'name'));
+  $query->innerJoin('users_roles', 'ur', 'u.uid = ur.uid');
+  $query->innerJoin('role', 'r', 'ur.rid = r.rid');
+  $query->condition('r.name', 'agent', 'LIKE');
+  $result = $query->execute();
+
+  return $result;
+}
+
+function ticket_limit_get_concert() {
+  $query = new EntityFieldQuery();
+  $query
+		->entityCondition('entity_type', 'node')
+		->propertyCondition('type', 'concert')
+		->propertyCondition('status', 1, '=');
+
+  $result = $query->execute();
+	//print_r($result);
+  $concerts = array();
+  foreach($result['node'] as $record) {
+    $concert = node_load($record->nid, NULL, TRUE);
+    $concerts[$concert->nid] = $concert->title;
+  }
+  
+  return $concerts;
+}
+
+function ticket_limit_get_ticket($uid = 0, $concert_id = 0) {
+	if ($concert_id == 0) {
+		$concert_id = (isset($_SESSION['ticket_limit_concert']) ? $_SESSION['ticket_limit_concert'] : 0);
+	}
+	
+  $list = array();
+  if (isset($_SESSION['ticket_limit_concert'])) {
+		$n_concert = node_load(NULL, $concert_id, TRUE);
+		$tickets = unserialize($n_concert->field_ticket['und'][0]['ticket_ids']);
+		$tickets = array_keys(array_flip($tickets));
+		foreach ($tickets as $ticket_id) {
+			$ticket = commerce_product_load($ticket_id, NULL, TRUE);
+			$query = db_select('ticket_limit', 't');
+			$query->fields('t', array('uid', 'tid', 'ticket_limit'));
+			$query->condition('tid', $ticket_id);
+			if ($uid) {
+				$query->condition('uid', $uid);
+			}
+			$result = $query->execute();
+			$list[$ticket_id]['tid'] = $ticket_id;
+			$list[$ticket_id]['title'] = $ticket->title;	
+			if ($uid) {
+				foreach ($result as $data) {
+					$list[$ticket_id]['limit'] = $data->ticket_limit;
+				}
+			} else {
+				foreach ($result as $data) {
+					$list[$ticket_id]['limit'][$data->uid] = $data->ticket_limit;
+				}
+			}
+		}
+	}
+  
+  return $list;
+}
+
+function ticket_limit_edit($uid, $concert_id) {
+	$ticket_limit = ticket_limit_get_ticket($uid, $concert_id);
+	return drupal_get_form('ticket_limit_edit_form', $uid, $ticket_limit);
+}
+
+function ticket_limit_edit_form($form, &$form_state, $uid, $ticket_limit) {
+	$form = array();
+	foreach ($ticket_limit as $key => $limit) {
+		
+		$form['limit'][$key] = array(
+			'#title' => t($limit['title']),
+			'#type' => 'textfield',
+	    '#default_value' => (isset($limit['limit']) ? $limit['limit'] : 0),
+		);
+	}
+	$form['uid'] = array(
+		'#type' => 'hidden',
+		'#default_value' => $uid,
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Submit'),
+		'#submit' => array('ticket_limit_edit_form_submit'),
+	);
+	
+	return $form;
+}
+
+function ticket_limit_edit_form_submit($form, &$form_state) {
+	// delete all record related to userid and  tid current concert
+	ticket_limit_save($form_state['values']['uid'], $form_state['complete form']['limit']);
+	//watchdog('debug', '<pre>'. print_r($form_state, TRUE) .'</pre>');
+	//drupal_goto('');
+}
+
+function ticket_limit_save($uid, $limit) {
+	//watchdog('debug', '<pre>'. print_r($limit, TRUE) .'</pre>');
+	foreach ($limit as $key => $data) {
+		if (is_int($key)) {
+			watchdog('debug', '<pre>'. print_r($data, TRUE) .'</pre>');
+			db_delete('ticket_limit')
+				->condition('uid', $uid)
+				->condition('tid', $key)
+				->execute();
+			db_insert('ticket_limit')
+				->fields(
+					array(
+						'uid' => $uid,
+						'tid' => $key,
+						'ticket_limit' => $data['#value'],
+					))
+				->execute();
+		}
+	}
+}

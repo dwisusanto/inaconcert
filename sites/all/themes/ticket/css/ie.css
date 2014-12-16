@@ -1,0 +1,3 @@
+#slider-wrapper ,.content-box, #sidebar .widget, .adv-300-250, .container{
+	behavior: url(css/PIE.htc);
+}

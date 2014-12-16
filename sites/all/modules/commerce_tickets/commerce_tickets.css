@@ -1,0 +1,22 @@
+
+span.ticket_type {
+  display: inline-block;
+  margin-right: 20px;
+}
+.passengers_select .form-type-select {
+  display: inline-block;
+  margin-right: 10px;
+}
+span.ticket_price {
+  font-weight: bold;
+}
+span#total_price_label, span#total_price {
+  font-weight: bold;
+  display: inline-block;
+  margin-right: 20px;
+}
+#total_cost, #ticket_reserve_form .form-submit {
+  float: right;
+  clear: both;
+  margin-bottom: 10px;
+}

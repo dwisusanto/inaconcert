@@ -1,0 +1,711 @@
+<?php
+/* hook_permission */
+function ticket_agent_permission() {
+  return array(
+    'agent' => array(
+      'title' => t('Agent page access'),
+    ),
+  );
+}
+
+/* hook_menu */
+function ticket_agent_menu() {
+  $items['admin/agent'] = array(
+		'title' => 'Home',
+		'description' => 'Agent Home',
+    'page callback' => 'ticket_agent_home',
+    'access arguments' => array('agent'),
+    'type' => MENU_CALLBACK,
+	);
+	
+  $items['admin/agent/ticket'] = array(
+		'title' => 'List Ticket',
+		'description' => 'List Ticket',
+    'page callback' => 'ticket_agent_list_ticket',
+    'page argument' => array(3),
+    'access arguments' => array('agent'),
+    'type' => MENU_CALLBACK,
+	);
+  	
+  $items['admin/agent/ticket_report'] = array(
+		'title' => 'List Ticket',
+		'description' => 'List Ticket',
+    'page callback' => 'ticket_agent_ticket_report',
+    'page argument' => array(3),
+    'access arguments' => array('agent'),
+    'type' => MENU_CALLBACK,
+	);
+  
+  $items['admin/agent/buy_ticket'] = array(
+		'title' => 'Buy Ticket',
+		'description' => 'Buy Ticket',
+    'page callback' => 'ticket_agent_buy_ticket_form_wrapper',
+    'page argument' => array(3, 4),
+    'access arguments' => array('agent'),
+    'type' => MENU_CALLBACK,
+	);
+    
+  $items['admin/agent/orders'] = array(
+		'title' => 'Agent List Order',
+		'description' => 'Agent List Order',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticket_agent_order_list'),
+    'access arguments' => array('agent'),
+    'type' => MENU_CALLBACK,
+	);
+     
+  $items['admin/agent/orders_admin'] = array(
+		'title' => 'Admin List Order',
+		'description' => 'Admin List Order',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticket_agent_order_admin'),
+    'access arguments' => array('configure store'),
+    'type' => MENU_CALLBACK,
+	);
+  
+	return $items;
+}
+/* function to view agent page, list of concert */
+function ticket_agent_home() {
+	$page = '<h1>Concert List</h1>';
+	$query = new EntityFieldQuery();
+
+  $query
+		->entityCondition('entity_type', 'node')
+		->propertyCondition('type', 'concert')
+		->propertyCondition('status', 1, '=');
+
+  $result = $query->execute();
+	//print_r($result);
+  $nids = array();
+  foreach($result['node'] as $record) {
+    $nids[] = $record->nid;
+  }
+  $concerts = entity_load('node', $nids);
+	$page .= '<ul class="list_concert">';
+	foreach ($concerts as $concert) {
+		$img = file_create_url($concert->field_foto['und'][0]['uri']);
+		$page .= '<li>';
+		$page .= '<a href="' . url('admin/agent/ticket/' . $concert->vid) . '">';
+		$page .= '<img class="thumbnails" width="210" src="' . $img . '" alt="">';
+		$page .= '<span>' . $concert->title . '</span>';
+		$page .= '</a>';
+		$page .= '</li>';
+	}
+	$page .= '</ul>';
+	return $page;
+}
+
+function ticket_agent_list_ticket($concert = 0) {
+	$page = '';
+	if ($concert) {
+		$n_concert = node_load(NULL, $concert, TRUE);
+		$tickets = unserialize($n_concert->field_ticket['und'][0]['ticket_ids']);
+    $tickets = array_keys(array_flip($tickets));
+		$page .= '<ul class="list_ticket">';
+		foreach ($tickets as $ticket_id) {
+      $ticket = commerce_product_load($ticket_id, NULL, TRUE);
+			$available = ticket_agent_get_available($ticket_id);
+      $page .= '<li>';
+			if ($available > 0) {
+				$page .= '<a href="' . url('admin/agent/buy_ticket/' . $concert . '/' . $ticket_id). '">';
+      }
+			$page .= '<ul>';
+      $page .= '<li>SKU :' . $ticket->sku . '</li>';
+      $page .= '<li>TYPE :' . $ticket->title . '</li>';
+      $page .= '<li>PRICE :' . commerce_currency_format($ticket->commerce_price['und'][0]['amount'], $ticket->commerce_price['und'][0]['currency_code']). '</li>';
+      $page .= '<li>AVBL :' . $available . '</li>';
+      $page .= '</ul>';
+			if ($available > 0) {
+				$page .= '</a>';
+			}
+      $page .= '</li>';
+		}
+		$page .= '</ul>';
+	} else {
+		$page = 'Tiket tidak ditemukan <a href="' . url('admin/agent') . '">Kembali</a>';
+	}
+	$page .= '<div id="back-to-concert"> <a href="' . url('admin/agent') . '">Kembali</a></div>';
+	
+	return $page;
+}
+
+function ticket_agent_get_available($ticket_id) {
+	global $user;
+	$query = db_select('ticket_limit', 't');
+	$query->fields('t', array('ticket_limit'));
+	$query->condition('tid', $ticket_id);
+	$query->condition('uid', $user->uid);
+	$result = $query->execute();
+	foreach ($result as $data) {
+		return $data->ticket_limit;
+	}
+	return 0;
+}
+
+function ticket_agent_buy_ticket_form_wrapper($concert, $ticket_id) {
+	return drupal_get_form('ticket_agent_buy_ticket_form', $concert, $ticket_id);
+}
+
+function ticket_agent_buy_ticket_form($form, $form_state, $concert, $ticket_id) {
+	$form = array();
+	$concert = node_load($concert, NULL, TRUE);
+	$ticket = commerce_product_load($ticket_id, NULL, TRUE);
+	$form['ticket'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Ticket'),
+  );
+	
+	$form['ticket']['ticket_id'] = array(
+	  '#type' => 'hidden',
+	  '#value' => $ticket_id,
+	);
+
+	$form['ticket']['concert'] = array(
+	  '#type' => 'item',
+	  '#title' => t('Concert'),
+	  '#markup' => $concert->title,
+	);
+
+	$form['ticket']['type'] = array(
+	  '#type' => 'item',
+	  '#title' => t('Type'),
+	  '#markup' => $ticket->title,
+	);
+
+	$form['ticket']['quantity'] = array(
+    '#type' => 'select',
+    '#title' => t('Quantity'),
+    '#options' => array(
+      1 => '1',
+      2 => '2',
+      3 => '3',
+      4 => '4',
+    ),
+  );
+	
+	$form['customer'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Customer Information'),
+  );
+	
+  $form['customer']['fullname'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Full name'),
+		'#required' => TRUE,
+  );
+
+  $form['customer']['address1'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Address 1'),
+		'#required' => TRUE,
+  );
+
+  $form['customer']['address2'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Address 2'),
+  );
+
+  $form['customer']['city'] = array(
+    '#type' => 'textfield',
+    '#title' => t('City'),
+		'#required' => TRUE,
+  );
+
+  $form['customer']['state'] = array(
+    '#type' => 'textfield',
+    '#title' => t('State'),
+  );
+
+  $form['customer']['postal_code'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Postal code'),
+  );
+
+  $form['customer']['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+		'#required' => TRUE,
+  );
+
+  $form['customer']['phone'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Phone number'),
+		'#required' => TRUE,
+  );
+
+  $form['customer']['identity_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Identity ID'),
+		'#required' => TRUE,
+  );
+	
+	$form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
+	$form['#submit'][] = 'ticket_agent_buy_ticket_form_submit';
+	$form['#validate'][] = 'ticket_agent_buy_ticket_form_validate';
+	return $form;
+}
+
+function ticket_agent_buy_ticket_form_validate($form, &$form_state) {
+	global $user;
+	$query = db_select('ticket_limit', 't');
+	$query->fields('t', array('ticket_limit'));
+	$query->condition('tid', $form_state['values']['ticket_id']);
+	$query->condition('uid', $user->uid);
+	$result = $query->execute();
+	foreach ($result as $data) {
+		if ($data->ticket_limit < $form_state['values']['quantity']) {
+			form_set_error('quantity', t('Quantity over quota.'));
+		}
+	}
+}
+
+function ticket_agent_buy_ticket_form_submit($form,&$form_state) {
+	global $user;
+	$billing_profile = commerce_customer_profile_new('billing', $user->uid);
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] = $form_state['values']['fullname'];
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['country'] = 'ID';
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['thoroughfare'] = $form_state['values']['address1'];
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['locality'] = $form_state['values']['city'];
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['administrative_area'] = $form_state['values']['fullname'];
+  $billing_profile->commerce_customer_address[LANGUAGE_NONE][0]['postal_code'] = $form_state['values']['postal_code'];
+  $billing_profile->field_customer_email[LANGUAGE_NONE][0]['value'] = $form_state['values']['email'];
+  $billing_profile->field_phone_number[LANGUAGE_NONE][0]['value'] = $form_state['values']['phone'];
+  $billing_profile->field_identity_id[LANGUAGE_NONE][0]['value'] = $form_state['values']['identity_id'];
+  commerce_customer_profile_save($billing_profile);
+  commerce_addressbook_set_default_profile($billing_profile);
+	// watchdog('debug', '<pre>'. print_r($billing_profile, TRUE) .'</pre>');
+	$order = ticket_agent_buy_ticket($form_state['values']['ticket_id'], $form_state['values']['quantity'], $billing_profile->profile_id);
+	if ($order) {
+		// decrease limit
+		ticket_agent_decrease_limit($user->uid, $form_state['values']['ticket_id'], $form_state['values']['quantity']);
+		drupal_set_message(t('Order success, order id: %s', array('%s' => $order->order_id)));
+	}
+}
+
+function ticket_agent_decrease_limit($uid, $ticket_id, $qty) {
+	$query = db_select('ticket_limit', 't');
+	$query->fields('t', array('ticket_limit'));
+	$query->condition('tid', $ticket_id);
+	$query->condition('uid', $uid);
+	$result = $query->execute();
+	foreach ($result as $data) {
+		$ticket_limit = $data->ticket_limit - $qty;
+	}
+	$query = db_update('ticket_limit');
+  $query->fields(array('ticket_limit' => $ticket_limit));
+  $query->condition('tid', $ticket_id);
+	$query->condition('uid', $uid);
+  $query->execute();
+}
+function ticket_agent_buy_ticket($ticket_id, $quantity, $profile_id) {
+	global $user;
+	$order = commerce_order_new($user->uid, 'pending');
+
+	// Save the order so its ID is assigned.
+	commerce_order_save($order);
+
+	$order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+	$product = commerce_product_load($ticket_id);
+
+	// Create a line item with quantity 1 and this product.
+	$line_item = commerce_product_line_item_new($product, $quantity, $order->order_id);
+
+	// Save the line item to get its ID.
+	commerce_line_item_save($line_item);
+
+	// Add the line item to the order using the wrapper.
+	$order_wrapper->commerce_line_items[] = $line_item;
+	
+	$profile_object = array ('und' => array ( array ( 'profile_id' => $profile_id , ) , ) , );
+ 
+ 
+	$order->commerce_customer_billing = $profile_object;
+
+  // Save the order.
+  commerce_order_save($order);
+
+  // Ensure the attached line items are associated with the order if they do not
+  // have an order_id set yet.
+  foreach (entity_metadata_wrapper('commerce_order', $order)->commerce_line_items as $delta => $line_item_wrapper) {
+    if ($line_item_wrapper->order_id->value() == 0) {
+      $line_item_wrapper->order_id = $order->order_id;
+      $line_item_wrapper->save();
+    }
+  }
+	
+	// do payment
+	
+	// go to voucher page
+  return $order;
+}
+
+function ticket_agent_ticket_report($concert_id) {
+  
+	return $page;
+}
+
+function ticket_agent_user_login(&$edit, $account)
+{
+  watchdog('account', '<pre>'. print_r($account, TRUE) .'</pre>');
+  // Your logic will set $redirection to the desired location
+  $redirection = 'admin/agent';
+  
+  // Unless there is already a redirection going, or the user is trying to reset his password, we redirect to $redirection.
+  if ((in_array('agent', $account->roles))
+    && !is_null($redirection)
+    && (!isset($_POST['form_id']) || $_POST['form_id'] != 'user_pass_reset'))
+  {
+    $_GET['destination'] = $redirection; // Should we use $edit['redirect'] instead..?
+  }
+}
+
+/* agent orders list*/
+function ticket_agent_order_list_form() {
+  $concert = ticket_agent_get_concert();
+	$form = array();
+	$form['concert'] = array(
+		'#type' => 'select',
+		'#title' => t('Concert'),
+		'#options' => $concert,
+    '#default_value' => (isset($_SESSION['ticket_agent_concert']) ? $_SESSION['ticket_agent_concert'] : 0),
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Submit'),
+		'#submit' => array('ticket_agent_order_list_form_submit'),
+	);
+	return $form;
+}
+
+function ticket_agent_order_list_form_submit($form, &$form_state) {
+  $_SESSION['ticket_agent_concert'] = $form_state['values']['concert'];
+}
+
+function ticket_agent_order_list($form, $form_state) {
+  $form['filter'] = ticket_agent_order_list_form();
+  $form['#submit'][] = 'ticket_agent_order_list_form_submit';
+  $form['admin'] = ticket_agent_order_list_table();
+  $form['ticket'] = ticket_agent_ticket_admin_table();
+
+  return $form;
+}
+
+function ticket_agent_order_list_table() {
+  // Build the sortable table header.
+  $header = array(
+    'num' => array('data' => t('ORDER NUMBER')),
+    'user' => array('data' => t('AGENT/USER')),
+    'name' => array('data' => t('NAME')),
+    'item' => array('data' => t('ITEM')),
+    'qt' => array('data' => t('QUANTITY')),
+    'total' => array('data' => t('TOTAL')),
+    'date' => array('data' => t('DATE')),
+  );
+  $options = array();
+  $orders = ticket_agent_get_order();
+  
+  if ($orders) {
+		$total = 0;
+    foreach ($orders as $order) {
+      if ($order) {
+        $options[$order->order_id]['num'] = $order->order_number;
+        $user = user_load($order->uid);
+        $line_item = commerce_line_item_load($order->commerce_line_items['und'][0]['line_item_id']);
+				if (isset($order->commerce_customer_billing['und'][0]['profile_id'])) {
+					$profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
+					$options[$order->order_id]['name'] = $profile->commerce_customer_address['und'][0]['name_line'];
+				} else {
+					$options[$order->order_id]['name'] = '';
+				}
+
+        $options[$order->order_id]['user'] = $user->name;
+        $options[$order->order_id]['item'] = $line_item->line_item_label;
+        $options[$order->order_id]['qt'] = (int) $line_item->quantity;
+        $options[$order->order_id]['total'] = commerce_currency_format($order->commerce_order_total['und'][0]['amount'], $order->commerce_order_total['und'][0]['currency_code']);
+        $total += $order->commerce_order_total['und'][0]['amount'];
+				$options[$order->order_id]['date'] = date('d M Y - H:i:s', $order->changed);
+        $operations['detail'] = array(
+          'title' => t('detail'),
+          'href' => 'admin/commerce/orders/' . $order->order_id . '/view',
+          'query' => drupal_get_destination(),
+        );
+				$operations['voucher'] = array(
+          'title' => t('voucher'),
+          'href' => 'print/admin/commerce/orders/' . $order->order_id . '/voucher/pdf',
+					'attributes' => array('target' => '_blank'),
+        );
+        $header['operations'] = array('data' => t('Options'));
+        $options[$order->order_id]['operations'] = array(
+          'data' => array(
+            '#theme' => 'links__node_operations',
+            '#links' => $operations,
+            '#attributes' => array('class' => array('links', 'inline')),
+          ),
+        );
+      }
+    }
+		$options[] = array(
+			'name' => array('data' => '<b>Total</b>', 'colspan' => 5),
+			'total' => array( 'data' => '<b>' . commerce_currency_format($total, 'IDR') . '</b>', 'colspan'
+ => 3)		);
+  }
+  $form['ticket_limit'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $options,
+    '#empty' => t('No content available.'),
+  );
+  
+  return $form;
+}
+
+function ticket_agent_get_user() {
+  // get user list with agent roles
+  $query = db_select('users', 'u');
+  $query->fields('u', array('uid', 'name'));
+  $query->innerJoin('users_roles', 'ur', 'u.uid = ur.uid');
+  $query->innerJoin('role', 'r', 'ur.rid = r.rid');
+  $query->condition('r.name', 'agent', 'LIKE');
+  $result = $query->execute();
+
+  return $result;
+}
+
+function ticket_agent_get_concert() {
+  $query = new EntityFieldQuery();
+  $query
+		->entityCondition('entity_type', 'node')
+		->propertyCondition('type', 'concert')
+		->propertyCondition('status', 1, '=');
+
+  $result = $query->execute();
+	//print_r($result);
+  $concerts = array();
+  foreach($result['node'] as $record) {
+    $concert = node_load($record->nid, NULL, TRUE);
+    $concerts[$concert->nid] = $concert->title;
+  }
+  
+  return $concerts;
+}
+
+function ticket_agent_get_order($user = 'user') {
+  global $user;
+  $list = array();
+  if (isset($_SESSION['ticket_agent_concert'])) {
+		$n_concert = node_load(NULL, $_SESSION['ticket_agent_concert'], TRUE);
+		$tickets = unserialize($n_concert->field_ticket['und'][0]['ticket_ids']);
+		$tickets = array_keys(array_flip($tickets));
+  
+    $query = db_select('commerce_line_item', 'li');
+    $query->fields('li', array('order_id'));
+    $query->innerJoin('commerce_product', 'p', 'p.sku = li.line_item_label');
+    $query->innerJoin('commerce_order', 'o', 'o.order_id = li.order_id');
+    if (in_array('administration', $user->roles)) {
+      $query->condition('o.uid', $user->uid);
+    }
+		if (isset($_SESSION['ticket_agent_agent']) && $_SESSION['ticket_agent_agent'] != 0) {
+      $query->condition('o.uid', $_SESSION['ticket_agent_agent']);
+		}
+    if (isset($_SESSION['ticket_agent_status']) && $_SESSION['ticket_agent_status'] != 'semua') {
+      $query->condition('o.status', $_SESSION['ticket_agent_status']);
+    }
+    $query->condition('product_id', $tickets, 'IN');
+    $query->condition('o.status', array('cart', 'checkout'), 'NOT IN');
+    $result = $query->execute();
+    while ( $record = $result->fetchAssoc() ) {
+      $list[] = commerce_order_load($record['order_id']);
+    }
+	}
+  
+  return $list;
+}
+
+
+/* agent orders admin*/
+function ticket_agent_order_admin_form() {
+  $concert = ticket_agent_get_concert();
+  $users = ticket_agent_get_user();
+	foreach ($users as $user) {
+		$agent[$user->uid] = $user->name;
+	}
+  $agent[0] = "Semua";
+	$form = array();
+	$form['concert'] = array(
+		'#type' => 'select',
+		'#title' => t('Concert'),
+		'#options' => $concert,
+    '#default_value' => (isset($_SESSION['ticket_agent_concert']) ? $_SESSION['ticket_agent_concert'] : 0),
+	);
+	$form['agent'] = array(
+		'#type' => 'select',
+		'#title' => t('Agent'),
+		'#options' => $agent,
+    '#default_value' => (isset($_SESSION['ticket_agent_agent']) ? $_SESSION['ticket_agent_agent'] : 0),
+	);
+	$form['status'] = array(
+		'#type' => 'select',
+		'#title' => t('Order Status'),
+		'#options' => array('semua' => 'Semua', 'pending' => 'Pending', 'completed' => 'Completed'),
+    '#default_value' => (isset($_SESSION['ticket_agent_status']) ? $_SESSION['ticket_agent_status'] : 0),
+	);
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#title' => t('Submit'),
+		'#value' => t('Submit'),
+		'#submit' => array('ticket_agent_order_admin_form_submit'),
+	);
+	return $form;
+}
+
+function ticket_agent_order_admin_form_submit($form, &$form_state) {
+  $_SESSION['ticket_agent_concert'] = $form_state['values']['concert'];
+  $_SESSION['ticket_agent_agent'] = $form_state['values']['agent'];
+  $_SESSION['ticket_agent_status'] = $form_state['values']['status'];
+}
+
+function ticket_agent_order_admin($form, $form_state) {
+  $form['filter'] = ticket_agent_order_admin_form();
+  $form['#submit'][] = 'ticket_agent_order_admin_form_submit';
+  $form['admin'] = ticket_agent_order_admin_table();
+  $form['ticket'] = ticket_agent_ticket_admin_table();
+
+  return $form;
+}
+
+function ticket_agent_ticket_admin_table() {
+	$header = array(
+    'name' => array('data' => ''),
+  );
+  $options = array();
+  $tickets = ticket_agent_get_ticket();
+  if ($tickets) {
+		$options[0]['name'] = t('Total');
+		$tic = $tickets;
+		foreach ($tickets as $key => $ticket) {
+			$header[$key] = array('data' => t($ticket['title']));
+			@$options[0][$key] += $ticket['total'];
+		}
+  }
+	
+  $form['ticket_limit'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $options,
+    '#empty' => t('No content available.'),
+  );
+  
+  return $form;
+}
+
+function ticket_agent_get_ticket() {
+	global $user;
+	$uid = @$_SESSION['ticket_agent_agent'];
+	$concert_id = (isset($_SESSION['ticket_agent_concert']) ? $_SESSION['ticket_agent_concert'] : 0);
+	
+  $list = array();
+  if (isset($_SESSION['ticket_agent_concert'])) {
+		$n_concert = node_load(NULL, $concert_id, TRUE);
+		$tickets = unserialize($n_concert->field_ticket['und'][0]['ticket_ids']);
+		$tickets = array_keys(array_flip($tickets));
+		foreach ($tickets as $ticket_id) {
+			$ticket = commerce_product_load($ticket_id, NULL, TRUE);
+      if ($ticket) {
+        $query = db_select('commerce_line_item', 'li');
+        $query->fields('li', array('quantity'));
+        $query->innerJoin('commerce_order', 'o', 'o.order_id = li.order_id');
+        $query->condition('line_item_label', $ticket->sku);
+        $query->condition('o.status', array('cart', 'checkout'), 'NOT IN');
+        if (isset($_SESSION['ticket_agent_status']) && $_SESSION['ticket_agent_status'] != 'semua') {
+          $query->condition('o.status', $_SESSION['ticket_agent_status']);
+        }
+        if ($uid != 0) {
+          $query->condition('o.uid', $uid);
+        }
+        $result = $query->execute();
+        $list[$ticket_id]['tid'] = $ticket_id;
+        $list[$ticket_id]['title'] = $ticket->title;	
+        $list[$ticket_id]['total'] = 0;
+        foreach ($result as $data) {
+          $list[$ticket_id]['total'] += $data->quantity;
+        }
+      }
+		}
+	}
+  
+  return $list;
+}
+
+
+function ticket_agent_order_admin_table() {
+  // Build the sortable table header.
+  $header = array(
+    'num' => array('data' => t('ORDER NUMBER')),
+    'user' => array('data' => t('AGENT/USER')),
+    'name' => array('data' => t('NAME')),
+    'item' => array('data' => t('ITEM')),
+    'qt' => array('data' => t('QUANTITY')),
+    'total' => array('data' => t('TOTAL')),
+    'date' => array('data' => t('DATE')),
+  );
+  $options = array();
+  $orders = ticket_agent_get_order('admin');
+  
+  if ($orders) {
+		$total = 0;
+    foreach ($orders as $order) {
+      if ($order) {
+        $options[$order->order_id]['num'] = $order->order_number;
+        $user = user_load($order->uid);
+        $line_item = commerce_line_item_load($order->commerce_line_items['und'][0]['line_item_id']);
+				if (isset($order->commerce_customer_billing['und'][0]['profile_id'])) {
+					$profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
+					$options[$order->order_id]['name'] = $profile->commerce_customer_address['und'][0]['name_line'];
+				} else {
+					$options[$order->order_id]['name'] = '';
+				}
+
+        $options[$order->order_id]['user'] = $user->name;
+        $options[$order->order_id]['item'] = $line_item->line_item_label;
+        $options[$order->order_id]['qt'] = (int) $line_item->quantity;
+        $options[$order->order_id]['total'] = commerce_currency_format($order->commerce_order_total['und'][0]['amount'], $order->commerce_order_total['und'][0]['currency_code']);
+				$total += $order->commerce_order_total['und'][0]['amount'];
+        $options[$order->order_id]['date'] = date('d M Y - H:i:s', $order->changed);
+        $operations['detail'] = array(
+          'title' => t('detail'),
+          'href' => 'admin/commerce/orders/' . $order->order_id . '/view',
+          'query' => drupal_get_destination(),
+        );
+				$operations['voucher'] = array(
+          'title' => t('voucher'),
+          'href' => 'print/admin/commerce/orders/' . $order->order_id . '/voucher/pdf',
+					'attributes' => array('target' => '_blank'),
+        );
+        $header['operations'] = array('data' => t('Options'));
+        $options[$order->order_id]['operations'] = array(
+          'data' => array(
+            '#theme' => 'links__node_operations',
+            '#links' => $operations,
+            '#attributes' => array('class' => array('links', 'inline')),
+          ),
+        );
+      }
+    }
+		$options[] = array(
+			'name' => array('data' => '<b>Total</b>', 'colspan' => 5),
+			'total' => array( 'data' => '<b>' . commerce_currency_format($total, 'IDR') . '</b>', 'colspan'
+ => 3)		);
+  }
+	
+  $form['ticket_limit'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $options,
+    '#empty' => t('No content available.'),
+  );
+  
+  return $form;
+}

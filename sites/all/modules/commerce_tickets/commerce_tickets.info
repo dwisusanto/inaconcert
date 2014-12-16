@@ -1,0 +1,24 @@
+name =  Commerce Tickets
+description = Allows the users to create ticket products, and sell tickets from within any node using a special tickets field that allows the user to enter the no of tickets and each ticket customer info and proceed to checkout
+core = 7.x
+dependencies[] = commerce
+dependencies[] = commerce_ui
+dependencies[] = commerce_product
+dependencies[] = commerce_cart
+dependencies[] = commerce_checkout
+dependencies[] = commerce_product_ui
+dependencies[] = commerce_order
+dependencies[] = commerce_order_ui
+dependencies[] = commerce_product_pricing
+dependencies[] = commerce_line_item_ui
+dependencies[] = commerce_customer_ui
+package = "Commerce"
+php = 5.0
+
+files[] = tests/commerce_tickets.test
+; Information added by drupal.org packaging script on 2013-03-17
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "commerce_tickets"
+datestamp = "1363524466"
+

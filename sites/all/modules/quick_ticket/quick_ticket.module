@@ -1,0 +1,209 @@
+<?php
+
+function quick_ticket_menu() {
+  $items['quick_ticket'] = array(
+		'title' => 'Quick Ticket',
+		'description' => 'Quick Ticket',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('quick_ticket_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+	);
+	
+	return $items;
+}
+
+function quick_ticket_form($form, &$form_state) {
+  $concert = _load_concert();
+  // If we have a value for the first dropdown from $form_state['values'] we use
+  // this both as the default value for the first dropdown and also as a
+  // parameter to pass to the function that retrieves the options for the
+  // second dropdown.
+  $selected = isset($form_state['values']['concert']) ? $form_state['values']['concert'] : key($concert);
+	$form = array(
+		'#prefix' => '<div id="ticket-replace">',
+    '#suffix' => '</div>',
+	);
+  $form['concert'] = array(
+    '#type' => 'select',
+    '#title' => 'Concert',
+    '#options' => $concert,
+    '#default_value' => $selected,
+    '#ajax' => array(
+      'callback' => 'quick_ticket_callback',
+      'wrapper' => 'ticket-replace',
+    ),
+  );
+	
+	$ticket = _ticket_option($selected);
+	$ticket_selected = isset($form_state['values']['ticket']) ? $form_state['values']['ticket'] : key($ticket);
+  $form['ticket'] = array(
+    '#type' => 'select',
+    '#title' => t('Type of Ticket'),
+    
+    // The entire enclosing div created here gets replaced when dropdown_first
+    // is changed.
+    
+    
+    // when the form is rebuilt during ajax processing, the $selected variable
+    // will now have the new value and so the options will change
+    '#options' => $ticket,
+    '#default_value' => $ticket_selected,
+		'#ajax' => array(
+      'callback' => 'quick_ticket_callback',
+      'wrapper' => 'ticket-replace',
+    ),
+  );
+  
+  $form['quantity'] = array(
+    '#type' => 'select',
+    '#title' => t('Quantity'),
+    '#options' => array(1 => 1, 2 => 2, 3 => 3, 4 => 4),
+    '#default_value' => isset($form_state['values']['quantity']) ? $form_state['values']['quantity'] : '',
+		'#ajax' => array(
+      'callback' => 'quick_ticket_callback',
+      'wrapper' => 'ticket-replace',
+    ),
+  );
+  
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+  $form['#validate'][] = 'quick_ticket_validate';
+  $form['#submit'][] = 'quick_ticket_submit';
+	$form['box'] = array(
+    '#type' => 'markup',
+    '#markup' => '<h5>Details Concert</h5>', 
+  );
+	$form['total'] = array(
+    '#type' => 'markup',
+    '#markup' => '', 
+  );
+	if ($selected) {
+		$concert_detail = _load_concert_detail($selected);
+		//print_r($concert_detail);
+		$form['box']['#markup'] = '<h5>Details Concert</h5>
+															<p>Promoted by : ' . @$concert_detail->field_promoted_by['und'][0]['safe_value'] . '<br />
+                            	Venue : ' . @$concert_detail->field_vanue['und'][0]['safe_value'] . ' <br />
+                            	Date : ' . @$concert_detail->field_date['und'][0]['safe_value'] . '  
+															</p>';
+		
+		
+	}
+	if ($ticket_selected) {
+		$price = _ticket_price($ticket_selected);
+		$harga = $price['amount'] * (@$form_state['values']['quantity'] ? @$form_state['values']['quantity'] : 1);
+		$harga_total = commerce_currency_format($harga, $price['currency_code']);
+	  $form['total']['#markup'] = '<h5>Harga Total: </h5>
+																<p>' . $harga_total . '</p>';
+	}
+  return $form;
+}
+
+function quick_ticket_callback($form, $form_state) {
+  return $form;
+}
+
+function quick_ticket_validate($form, $form_state) {
+  if ($form_state['values']['quantity'] == 0) {
+    form_set_error('quantity', t('You must select quantity of ticket.'));
+  }
+}
+
+function quick_ticket_submit($form, $form_state) {
+  global $user;
+
+  $order = ($user->uid) ? commerce_order_new($user->uid, 'checkout_checkout') : commerce_cart_order_new();
+  commerce_order_save($order);
+
+  if (isset($form_state['values']['ticket']) && $form_state['values']['quantity'] != 0) {
+    $ticket = commerce_product_load($form_state['values']['ticket']);
+    $line_item = commerce_product_line_item_new($ticket, $form_state['values']['quantity'], $order->order_id);
+    commerce_line_item_save($line_item);
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    $order_wrapper->commerce_line_items[] = $line_item;
+  }
+
+  commerce_order_save($order);
+  drupal_goto('checkout/' . $order->order_id);
+}
+
+function _load_concert() {
+  $query = new EntityFieldQuery();
+
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'concert');
+
+  $result = $query->execute();
+
+  if (isset($result['node'])) {
+    $concerts_items_nids = array_keys($result['node']);
+    $concerts_items = entity_load('node', $concerts_items_nids);
+    //print_r($concerts_items);
+    $result = array();
+    foreach ($concerts_items as $item) {
+      $result[$item->nid] = $item->title;
+    }
+  }
+  return $result;
+}
+
+function _load_concert_detail($concert_id) {
+  $result = array();
+  if ($concert_id) {
+    $concerts_items = node_load($concert_id);
+    //print_r($concerts_items);	
+		$result = $concerts_items;
+  }
+  return $result;
+}
+
+function _ticket_option($selected) {
+  $result = array();
+  if ($selected) {
+    $nodes = entity_load('node', array($selected));
+    foreach ($nodes as $node) {
+      $ticket_nids = unserialize($node->field_ticket['und'][0]['ticket_ids']);
+      foreach ($ticket_nids as $tiket) {
+        $prod = commerce_product_load($tiket);
+        if ($prod->status == 1) {
+          $result[$prod->product_id] = $prod->title;
+        }
+      }
+    }
+  }
+  return $result;
+}
+
+function _ticket_price($product_id) {
+  $result = array();
+	
+	if ($product_id) {
+		$prod = commerce_product_load($product_id);
+		$result = $prod->commerce_price['und'][0];
+  }
+  return $result;
+}
+
+function quick_ticket_block_info() {
+  // This example comes from node.module.
+  $blocks['quick_ticket'] = array(
+    'info' => t('Quick Ticket'), 
+    'cache' => DRUPAL_NO_CACHE,
+  );
+
+  return $blocks;
+}
+
+function quick_ticket_block_view($delta = '') {
+  // This example is adapted from node.module.
+  $block = array();
+
+  switch ($delta) {
+    case 'quick_ticket':
+      $block['content'] = drupal_get_form('quick_ticket_form');
+      break;
+  }
+  return $block;
+}
