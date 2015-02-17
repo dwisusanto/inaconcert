@@ -1,0 +1,13 @@
+name = "SimpleAds Campaigns"
+description = "This module allows to create advertisement campaigns."
+package = "SimpleAds"
+core = "7.x"
+
+dependencies[] = "simpleads"
+
+; Information added by Drupal.org packaging script on 2014-07-17
+version = "7.x-2.x-dev"
+core = "7.x"
+project = "simpleads"
+datestamp = "1405628093"
+

@@ -1,0 +1,207 @@
+<?php
+
+/**
+ * @file
+ * SimpleAds module.
+ */
+
+module_load_include('inc', 'simpleads', 'includes/helper');
+module_load_include('inc', 'simpleads', 'includes/node');
+module_load_include('inc', 'simpleads', 'includes/blocks');
+module_load_include('inc', 'simpleads', 'includes/field');
+module_load_include('inc', 'simpleads', 'simpleads.views');
+module_load_include('inc', 'simpleads', 'includes/cron');
+module_load_include('inc', 'simpleads', 'includes/theme');
+
+/**
+ * Implements hook_init().
+ */
+function simpleads_init() {
+
+  $info = libraries_detect('jquery.cycle');
+  if ( isset($info['error message']) && user_access('access advertisement node') ) {
+    $message = $info['error message'] . ' ' . t('Please download jQuery.Cycle to libraries/jquery.cycle/ directory.');
+    drupal_set_message($message, 'warning');
+  }
+
+}
+
+/**
+ * Implements hook_permission().
+ */
+function simpleads_permission() {
+  return array(
+    'access advertisement statistics' => array(
+      'title' => t('Access advertisement statistics'),
+    ),
+    'access advertisement node' => array(
+      'title' => t('Access advertisement node'),
+      'description' => t('Please use this permission to allow editors access ad node'),
+    ),
+    'administer advertisement blocks' => array(
+      'title' => t('Administer advertisement blocks'),
+    ),
+    'count advertisement impressions' => array(
+      'title' => t('Count advertisement impressions'),
+    ),
+    'count advertisement clicks' => array(
+      'title' => t('Count advertisement clicks'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function simpleads_menu() {
+
+  $items['admin/structure/block/simpleads'] = array(
+    'title' => 'Add advertisement block',
+    'description' => 'Add new SimpleAds advertisement block',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('simpleads_new_block_form'),
+    'access arguments' => array('administer advertisement blocks'),
+    'file' => 'simpleads.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+  );
+
+  $items['admin/structure/block/simpleads/delete/%'] = array(
+    'title' => 'Delete advertisement block',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('simpleads_delete_block_form', 5),
+    'access arguments' => array('administer advertisement blocks'),
+    'file' => 'simpleads.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['node/%node/stats'] = array(
+    'title' => 'Statistics',
+    'page callback' => 'simpleads_node_stats_tab',
+    'page arguments' => array(1),
+    'access callback' => 'simpleads_node_stats_tab_access',
+    'access arguments' => array(1),
+    'file' => 'simpleads.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['node/%node/stats/click'] = array(
+    'title' => 'Count click',
+    'page callback' => 'simpleads_node_stats_count_clicks',
+    'page arguments' => array(1),
+    'access arguments' => array('count advertisement clicks'),
+    'file' => 'simpleads.pages.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['node/%node/stats/impression'] = array(
+    'title' => 'Count impression',
+    'page callback' => 'simpleads_node_stats_count_impressions',
+    'page arguments' => array(1),
+    'access arguments' => array('count advertisement impressions'),
+    'file' => 'simpleads.pages.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['node/%node/stats/redirect'] = array(
+    'title' => 'Redirect',
+    'page callback' => 'simpleads_node_stats_redirect',
+    'page arguments' => array(1),
+    'access arguments' => array('count advertisement clicks'),
+    'file' => 'simpleads.pages.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function simpleads_admin_paths() {
+  return array(
+    'node/*/stats' => TRUE,
+  );
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function simpleads_requirements($phase) {
+
+  // Create an array to hold jQuery Cycle plugin requirements
+  $requirements = array();
+
+  // Check requirements during the runtime phase
+  if ($phase == 'runtime') {
+    // Check if the jQuery Cycle plugin library is installed
+    if ( ($library = libraries_detect('jquery.cycle')) && !empty($library['installed']) ) {
+      $requirements['jquery.cycle'] = array(
+        'title' => t('jQuery Cycle plugin'),
+        'value' => t('Installed'),
+        'severity' => REQUIREMENT_OK,
+      );
+    }
+    else {
+      $requirements['jquery.cycle'] = array(
+        'title' => t('jQuery Cycle plugin'),
+        'value' => t('Not installed'),
+        'description' => $library['error message'],
+        'severity' => REQUIREMENT_ERROR,
+      );
+    }
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implements hook_libraries_info().
+ */
+function simpleads_libraries_info() {
+
+  $libraries['jquery.cycle'] = array(
+    'name' => 'jQuery.Cycle',
+    'vendor url' => 'http://jquery.malsup.com/cycle',
+    'download url' => 'http://jquery.malsup.com/cycle/download.html',
+    'version arguments' => array(
+      'file' => 'jquery.cycle.all.js',
+      'pattern' => '/Version: (\d+)/',
+      'lines' => 5,
+    ),
+    'files' => array(
+      'js' => array('jquery.cycle.all.js'),
+    ),
+  );
+
+  return $libraries;
+}
+
+/**
+ * Implements hook_ad_activate().
+ */
+function simpleads_simpleads_activate($node) {
+  $node->status = 1;
+  node_save($node);
+  watchdog('simpleads', '@title (@nid) activated', array('@title' => $node->title, '@nid' => $node->nid), WATCHDOG_INFO);
+}
+
+/**
+ * Implements hook_ad_expired().
+ */
+function simpleads_simpleads_expired($node) {
+  $node->status = 0;
+  node_save($node);
+  watchdog('simpleads', '@title (@nid) expired', array('@title' => $node->title, '@nid' => $node->nid), WATCHDOG_INFO);
+}
+
+/**
+ * Access callback.
+ * node/%node/stats
+ */
+function simpleads_node_stats_tab_access($node) {
+  if ( $node->type == 'simpleads' && node_access('update', $node) ) {
+    return user_access('access advertisement statistics');
+  }
+  return FALSE;
+}
